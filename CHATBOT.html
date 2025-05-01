@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Health Tracker Assistant</title>
+  <script src="https://unpkg.com/react@18.2.0/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18.2.0/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 min-h-screen flex items-center justify-center text-gray-100">
+  <div id="root">Loading...</div>
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    function ErrorBoundary({ children }) {
+      const [hasError, setHasError] = useState(false);
+      useEffect(() => {
+        const handler = (event) => {
+          console.error('ErrorBoundary caught:', event.error || event);
+          setHasError(true);
+        };
+        window.addEventListener('error', handler);
+        return () => window.removeEventListener('error', handler);
+      }, []);
+      if (hasError) {
+        return <div className="text-red-400 p-4">Error: Something went wrong. Check console for details.</div>;
+      }
+      return children;
+    }
+
+    const generateId = () => {
+      return 'id-' + Math.random().toString(36).substr(2, 9) + '-' + Date.now();
+    };
+
+    const getTimestamp = () => {
+      return new Date().toISOString().slice(0, 19).replace('T', ' ');
+    };
+
+    function ProfileModal({ isOpen, onClose, user, setUser }) {
+      const [tempUser, setTempUser] = useState({ name: user.name, age: user.age.toString() });
+      const nameInputRef = useRef(null);
+
+      useEffect(() => {
+        if (isOpen) {
+          nameInputRef.current?.focus();
+        }
+      }, [isOpen]);
+
+      const saveProfile = () => {
+        if (!tempUser.name.trim() || isNaN(parseInt(tempUser.age)) || parseInt(tempUser.age) <= 0) {
+          alert("Please enter a valid name and age.");
+          return;
+        }
+        const newUser = { name: tempUser.name.trim(), age: parseInt(tempUser.age) };
+        setUser(newUser);
+        localStorage.setItem('healthUser', JSON.stringify(newUser));
+        onClose();
+      };
+
+      if (!isOpen) return null;
+
+      return (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-gray-800 p-6 rounded-lg shadow-lg max-w-sm w-full">
+            <h2 className="text-xl font-semibold text-gray-100 mb-4">
+              {user.name ? 'Edit Profile' : 'Set Up Your Profile'}
+            </h2>
+            <div className="space-y-4">
+              <input
+                type="text"
+                placeholder="Enter your name"
+                className="w-full p-2 border rounded bg-gray-800 text-gray-100 border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                value={tempUser.name}
+                onChange={e => setTempUser({ ...tempUser, name: e.target.value })}
+                ref={nameInputRef}
+              />
+              <input
+                type="number"
+                placeholder="Enter your age"
+                className="w-full p-2 border rounded bg-gray-800 text-gray-100 border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                value={tempUser.age}
+                onChange={e => setTempUser({ ...tempUser, age: e.target.value })}
+                min="1"
+              />
+              <div className="flex justify-end space-x-2">
+                <button
+                  className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition-colors"
+                  onClick={saveProfile}
+                >
+                  ✅ Save
+                </button>
+                {user.name && (
+                  <button
+                    className="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700 transition-colors"
+                    onClick={onClose}
+                  >
+                    Cancel
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function HealthApp() {
+      const [user, setUser] = useState({ name: '', age: '' });
+      const [records, setRecords] = useState([]);
+      const [view, setView] = useState('main');
+      const [input, setInput] = useState({ sugar: '', systolic: '', diastolic: '' });
+      const [isModalOpen, setIsModalOpen] = useState(false);
+
+      useEffect(() => {
+        try {
+          const storedUser = localStorage.getItem('healthUser');
+          const storedRecords = localStorage.getItem('healthRecords');
+          if (storedUser) {
+            const parsedUser = JSON.parse(storedUser);
+            setUser(parsedUser);
+            if (!parsedUser.name || !parsedUser.age) {
+              setIsModalOpen(true);
+            }
+          } else {
+            setIsModalOpen(true);
+          }
+          if (storedRecords) setRecords(JSON.parse(storedRecords));
+          console.log('App loaded successfully');
+        } catch (e) {
+          console.error('Error loading data:', e);
+        }
+      }, []);
+
+      const saveRecords = (newRecords) => {
+        try {
+          setRecords(newRecords);
+          localStorage.setItem('healthRecords', JSON.stringify(newRecords));
+        } catch (e) {
+          console.error('Error saving records:', e);
+          alert('Failed to save records.');
+        }
+      };
+
+      const addRecord = () => {
+        try {
+          const sugar = parseFloat(input.sugar);
+          const systolic = parseInt(input.systolic);
+          const diastolic = parseInt(input.diastolic);
+
+          if (isNaN(sugar) || isNaN(systolic) || isNaN(diastolic) || sugar < 0 || systolic < 0 || diastolic < 0) {
+            alert("Invalid input! Please enter valid positive numbers.");
+            return;
+          }
+
+          const newRecord = {
+            id: generateId(),
+            name: user.name,
+            age: user.age,
+            sugar_level: sugar,
+            systolic_bp: systolic,
+            diastolic_bp: diastolic,
+            timestamp: getTimestamp(),
+          };
+
+          const feedback = ["✅ Record saved!"];
+          if (sugar < 70) feedback.push("🔵 Warning: Low blood sugar!");
+          else if (sugar <= 99) feedback.push("🟢 Sugar level is normal.");
+          else if (sugar <= 125) feedback.push("🟡 Prediabetic sugar range.");
+          else feedback.push("🔴 High blood sugar! (Possible Diabetes)");
+
+          if (systolic < 90 || diastolic < 60) feedback.push("🔵 Low blood pressure.");
+          else if (systolic <= 120 && diastolic <= 80) feedback.push("🟢 Blood pressure is normal.");
+          else if (systolic <= 139 || diastolic <= 89) feedback.push("🟡 Prehypertension.");
+          else feedback.push("🔴 High blood pressure!");
+
+          saveRecords([...records, newRecord]);
+          alert(feedback.join('\n'));
+          setInput({ sugar: '', systolic: '', diastolic: '' });
+          setView('main');
+        } catch (e) {
+          console.error('Error adding record:', e.message, e.stack);
+          alert("Error saving record. Check console for details.");
+        }
+      };
+
+      const viewRecords = () => {
+        const userRecords = records.filter(r => r.name === user.name);
+        if (userRecords.length === 0) {
+          return <div className="text-yellow-400">⚠️ No records found.</div>;
+        }
+        return (
+          <div className="space-y-4">
+            <h2 className="text-xl font-semibold text-gray-100">📂 Health Records for {user.name}</h2>
+            {userRecords.map(rec => (
+              <div key={rec.id} className="bg-gray-800 p-4 rounded shadow">
+                <p className="text-gray-300">🧾 {rec.timestamp}</p>
+                <p className="text-gray-300">Sugar: {rec.sugar_level} mg/dL</p>
+                <p className="text-gray-300">BP: {rec.systolic_bp}/{rec.diastolic_bp} mmHg</p>
+              </div>
+            ))}
+          </div>
+        );
+      };
+
+      const showAverages = () => {
+        try {
+          const userRecords = records.filter(r => r.name === user.name);
+          if (userRecords.length === 0) {
+            alert("⚠️ Not enough data to calculate averages.");
+            return;
+          }
+          const avgSugar = userRecords.reduce((sum, r) => sum + r.sugar_level, 0) / userRecords.length;
+          const avgSystolic = userRecords.reduce((sum, r) => sum + r.systolic_bp, 0) / userRecords.length;
+          const avgDiastolic = userRecords.reduce((sum, r) => sum + r.diastolic_bp, 0) / userRecords.length;
+          alert(`📊 Averages\nSugar Level: ${avgSugar.toFixed(2)} mg/dL\nBlood Pressure: ${avgSystolic.toFixed(2)}/${avgDiastolic.toFixed(2)} mmHg`);
+        } catch (e) {
+          console.error('Error calculating averages:', e);
+          alert("Error calculating averages.");
+        }
+      };
+
+      const analyzeDiabetesRisk = () => {
+        try {
+          const userRecords = records.filter(r => r.name === user.name);
+          if (userRecords.length === 0) {
+            alert("⚠️ Not enough data to analyze.");
+            return;
+          }
+          const avgSugar = userRecords.reduce((sum, r) => sum + r.sugar_level, 0) / userRecords.length;
+          let msg = `📈 Avg Sugar: ${avgSugar.toFixed(2)} mg/dL\n`;
+          if (avgSugar < 70) msg += "🔵 Low sugar (Hypoglycemia).";
+          else if (avgSugar <= 99) msg += "🟢 Normal range.";
+          else if (avgSugar <= 125) msg += "🟡 Prediabetic range.";
+          else msg += "🔴 High risk of Diabetes!";
+          alert(msg);
+        } catch (e) {
+          console.error('Error analyzing diabetes risk:', e);
+          alert("Error analyzing diabetes risk.");
+        }
+      };
+
+      const showDeveloper = () => {
+        alert("👨‍💻 Developer\nThis chatbot was developed by Suraj/Shreyasi/Sneha.\nKeep tracking, stay healthy! 💪");
+      };
+
+      const renderView = () => {
+        switch (view) {
+          case 'add':
+            return (
+              <div className="space-y-4">
+                <h2 className="text-xl font-semibold text-gray-100">➕ Add Health Record</h2>
+                <input
+                  type="number"
+                  placeholder="Blood sugar level (mg/dL)"
+                  className="w-full p-2 border rounded bg-gray-800 text-gray-100 border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  value={input.sugar}
+                  onChange={e => setInput({ ...input, sugar: e.target.value })}
+                  min="0"
+                />
+                <input
+                  type="number"
+                  placeholder="Systolic BP"
+                  className="w-full p-2 border rounded bg-gray-800 text-gray-100 border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  value={input.systolic}
+                  onChange={e => setInput({ ...input, systolic: e.target.value })}
+                  min="0"
+                />
+                <input
+                  type="number"
+                  placeholder="Diastolic BP"
+                  className="w-full p-2 border rounded bg-gray-800 text-gray-100 border-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-400"
+                  value={input.diastolic}
+                  onChange={e => setInput({ ...input, diastolic: e.target.value })}
+                  min="0"
+                />
+                <button className="bg-green-600 text-white px-4 py-2 rounded hover:bg-green-700 transition-colors" onClick={addRecord}>Save Record</button>
+                <button className="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700 transition-colors" onClick={() => setView('main')}>Back</button>
+              </div>
+            );
+          case 'view':
+            return (
+              <div className="space-y-4">
+                {viewRecords()}
+                <button className="bg-gray-600 text-white px-4 py-2 rounded hover:bg-gray-700 transition-colors" onClick={() => setView('main')}>Back</button>
+              </div>
+            );
+          default:
+            return (
+              <div className="space-y-4">
+                <h1 className="text-2xl font-bold text-gray-100">🩺 Welcome, {user.name}!</h1>
+                <button className="w-full bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors" onClick={() => setView('add')}>➕ Add Health Record</button>
+                <button className="w-full bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors" onClick={() => setView('view')}>📂 View Records</button>
+                <button className="w-full bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors" onClick={showAverages}>📊 Show Averages</button>
+                <button className="w-full bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors" onClick={analyzeDiabetesRisk}>📈 Analyze Diabetes Risk</button>
+                <button className="w-full bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors" onClick={() => setIsModalOpen(true)}>👤 Edit Profile</button>
+                <button className="w-full bg-blue-600 text-white px-4 py-2 rounded hover:bg-blue-700 transition-colors" onClick={showDeveloper}>👨‍💻 Developer Info</button>
+                <button className="w-full bg-red-600 text-white px-4 py-2 rounded hover:bg-red-700 transition-colors" onClick={() => window.location.reload()}>❌ Exit</button>
+              </div>
+            );
+        }
+      };
+
+      return (
+        <div className="max-w-md mx-auto bg-gray-800 p-6 rounded-lg shadow-lg text-gray-100">
+          <ErrorBoundary>
+            {renderView()}
+            <ProfileModal
+              isOpen={isModalOpen}
+              onClose={() => setIsModalOpen(false)}
+              user={user}
+              setUser={setUser}
+            />
+          </ErrorBoundary>
+        </div>
+      );
+    }
+
+    try {
+      const root = ReactDOM.createRoot(document.getElementById('root'));
+      root.render(<HealthApp />);
+    } catch (e) {
+      console.error('Error rendering app:', e);
+      document.getElementById('root').innerHTML = '<div class="text-red-400 p-4">Failed to load app. Check console for errors.</div>';
+    }
+  </script>
+</body>
+</html>
